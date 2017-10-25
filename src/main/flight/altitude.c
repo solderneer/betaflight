@@ -47,6 +47,7 @@
 #include "sensors/sonar.h"
 
 #define CEILING_HEIGHT 2
+#define MID_THROTTLE 1500
 
 int32_t AltHold;
 static int32_t estimatedVario = 0;                      // variometer in cm/s
@@ -71,7 +72,6 @@ static int32_t setVelocity = 0;
 static uint8_t velocityControl = 0;
 static int32_t errorVelocityI = 0;
 static int32_t altHoldThrottleAdjustment = 0;
-static int32_t prevThrottleValue = 0;
 static int16_t initialThrottleHold;
 
 // 40hz update rate (20hz LPF on acc)
@@ -98,14 +98,14 @@ static void applyMultirotorAltHold(void)
         }
     } else {
         // slow alt changes, mostly used for aerial photographiy
-        if (ABS(rcData[THROTTLE] - initialThrottleHold) > rcControlsConfig()->alt_hold_deadband) {
+        if (ABS(rcData[THROTTLE] - MID_THROTTLE) > rcControlsConfig()->alt_hold_deadband) {
             // set velocity proportional to stick movement +100 throttle gives ~ +50 cm/s
             if(estimatedAltitude > CEILING_HEIGHT) {
                 // Do something to maintain ceiling height
-                if(!(rcData[THROTTLE] < (prevThrottleValue - rcControlsConfig()->alt_hold_deadband)))
+                if(!(rcData[THROTTLE] < (MID_THROTTLE - rcControlsConfig()->alt_hold_deadband)))
                     setVelocity = 0;
             }
-            setVelocity = (rcData[THROTTLE] - initialThrottleHold) / 2;
+            setVelocity = (rcData[THROTTLE] - MID_THROTTLE) / 2;
             velocityControl = 1;
             isAltHoldChanged = 1;
         } else if (isAltHoldChanged) {
@@ -113,7 +113,7 @@ static void applyMultirotorAltHold(void)
             velocityControl = 0;
             isAltHoldChanged = 0;
         }
-        rcCommand[THROTTLE] = constrain(initialThrottleHold + altHoldThrottleAdjustment, PWM_RANGE_MIN, PWM_RANGE_MAX);
+        rcCommand[THROTTLE] = constrain(MID_THROTTLE + altHoldThrottleAdjustment, PWM_RANGE_MIN, PWM_RANGE_MAX);
     }
 }
 
