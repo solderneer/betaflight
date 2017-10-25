@@ -46,6 +46,7 @@
 #include "sensors/barometer.h"
 #include "sensors/sonar.h"
 
+#define CEILING_HEIGHT 2
 
 int32_t AltHold;
 static int32_t estimatedVario = 0;                      // variometer in cm/s
@@ -70,6 +71,7 @@ static int32_t setVelocity = 0;
 static uint8_t velocityControl = 0;
 static int32_t errorVelocityI = 0;
 static int32_t altHoldThrottleAdjustment = 0;
+static int32_t prevThrottleValue = 0;
 static int16_t initialThrottleHold;
 
 // 40hz update rate (20hz LPF on acc)
@@ -95,9 +97,14 @@ static void applyMultirotorAltHold(void)
             rcCommand[THROTTLE] = constrain(initialThrottleHold + altHoldThrottleAdjustment, PWM_RANGE_MIN, PWM_RANGE_MAX);
         }
     } else {
-        // slow alt changes, mostly used for aerial photography
+        // slow alt changes, mostly used for aerial photographiy
         if (ABS(rcData[THROTTLE] - initialThrottleHold) > rcControlsConfig()->alt_hold_deadband) {
             // set velocity proportional to stick movement +100 throttle gives ~ +50 cm/s
+            if(estimatedAltitude > CEILING_HEIGHT) {
+                // Do something to maintain ceiling height
+                if(!(rcData[THROTTLE] < (prevThrottleValue - rcControlsConfig()->alt_hold_deadband)))
+                    setVelocity = 0;
+            }
             setVelocity = (rcData[THROTTLE] - initialThrottleHold) / 2;
             velocityControl = 1;
             isAltHoldChanged = 1;
