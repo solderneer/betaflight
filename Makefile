@@ -16,7 +16,7 @@
 #
 
 # The target to build, see VALID_TARGETS below
-TARGET    ?= COLIBRI_RACE
+TARGET    ?= NAZE
 
 # Compile-time options
 OPTIONS   ?=
