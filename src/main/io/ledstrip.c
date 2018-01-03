@@ -35,8 +35,8 @@
 #include "common/utils.h"
 
 #include "config/feature.h"
-#include "config/parameter_group.h"
-#include "config/parameter_group_ids.h"
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
 #include "drivers/light_ws2811strip.h"
 #include "drivers/serial.h"
@@ -495,7 +495,7 @@ static void applyLedFixedLayers(void)
 
         case LED_FUNCTION_RSSI:
             color = HSV(RED);
-            hOffset += scaleRange(rssi * 100, 0, 1023, -30, 120);
+            hOffset += scaleRange(getRssi() * 100, 0, 1023, -30, 120);
             break;
 
         default:
@@ -586,14 +586,18 @@ static void applyLedVtxLayer(bool updateNow, timeUs_t *timer)
     static uint8_t pit = 255;
     static uint8_t showSettings = false;
     static uint16_t lastCheck = 0;
-    static bool active = false;
     static bool blink = false;
+
+    if (!vtxCommonDeviceRegistered()) {
+        return;
+    }
+
     uint8_t band = 255, channel = 255;
     uint16_t check = 0;
 
     if (updateNow) {
         // keep counter running, so it stays in sync with vtx
-        active = vtxCommonGetBandAndChannel(&band, &channel);
+        vtxCommonGetBandAndChannel(&band, &channel);
         vtxCommonGetPowerIndex(&power);
         vtxCommonGetPitMode(&pit);
 
@@ -612,10 +616,6 @@ static void applyLedVtxLayer(bool updateNow, timeUs_t *timer)
         }
         blink = !blink;
         *timer += HZ_TO_US(5); // check 5 times a second
-    }
-
-    if (!active) { // no vtx device detected
-        return;
     }
 
     hsvColor_t color = {0, 0, 0};
@@ -713,7 +713,7 @@ static void applyLedRssiLayer(bool updateNow, timeUs_t *timer)
     int timerDelay = HZ_TO_US(1);
 
     if (updateNow) {
-        int state = (rssi * 100) / 1023;
+        int state = (getRssi() * 100) / 1023;
 
         if (state > 50) {
             flash = true;

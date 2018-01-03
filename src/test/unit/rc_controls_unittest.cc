@@ -27,10 +27,11 @@ extern "C" {
     #include "common/axis.h"
     #include "common/bitarray.h"
 
-    #include "config/parameter_group.h"
-    #include "config/parameter_group_ids.h"
+    #include "pg/pg.h"
+    #include "pg/pg_ids.h"
 
     #include "blackbox/blackbox.h"
+    #include "blackbox/blackbox_fielddefs.h"
 
     #include "drivers/sensor.h"
 
@@ -699,6 +700,7 @@ void blackboxLogEvent(FlightLogEvent, flightLogEventData_t *) {}
 
 bool cmsInMenu = false;
 uint8_t armingFlags = 0;
+uint16_t flightModeFlags = 0;
 int16_t heading;
 uint8_t stateFlags = 0;
 int16_t rcData[MAX_SUPPORTED_RC_CHANNEL_COUNT];

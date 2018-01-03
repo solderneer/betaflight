@@ -52,9 +52,10 @@
 
 #define MAG_AK8975_ALIGN CW180_DEG
 
-#define USE_SONAR
-#define SONAR_TRIGGER_PIN           PA6   // RC_CH7 (PB0) - only 3.3v ( add a 1K Ohms resistor )
-#define SONAR_ECHO_PIN              PB1   // RC_CH8 (PB1) - only 3.3v ( add a 1K Ohms resistor )
+#define USE_RANGEFINDER
+#define USE_RANGEFINDER_HCSR04
+#define RANGEFINDER_HCSR04_TRIGGER_PIN           PA6   // RC_CH7 (PB0) - only 3.3v ( add a 1K Ohms resistor )
+#define RANGEFINDER_HCSR04_ECHO_PIN              PB1   // RC_CH8 (PB1) - only 3.3v ( add a 1K Ohms resistor )
 
 #define USE_VCP
 #define USE_UART1
@@ -104,7 +105,9 @@
 #define SERIALRX_PROVIDER       SERIALRX_SBUS
 #define SERIALRX_UART           SERIAL_PORT_USART1
 
-#define USE_NAV
+#define USE_GPS
+#define USE_GPS_UBLOX
+#define USE_GPS_NMEA
 
 #define USE_SERIAL_4WAY_BLHELI_INTERFACE
 

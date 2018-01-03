@@ -31,11 +31,11 @@
 #include "common/utils.h"
 
 #include "config/feature.h"
-#include "config/parameter_group.h"
-#include "config/parameter_group_ids.h"
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
-#include "drivers/gyro_sync.h"
 #include "drivers/light_led.h"
+#include "drivers/sound_beeper.h"
 #include "drivers/system.h"
 #include "drivers/time.h"
 #include "drivers/transponder_ir.h"
@@ -47,7 +47,6 @@
 #include "sensors/gyro.h"
 #include "sensors/sensors.h"
 
-#include "fc/cli.h"
 #include "fc/config.h"
 #include "fc/controlrate_profile.h"
 #include "fc/fc_core.h"
@@ -58,6 +57,8 @@
 
 #include "msp/msp_serial.h"
 
+#include "interface/cli.h"
+
 #include "io/asyncfatfs/asyncfatfs.h"
 #include "io/beeper.h"
 #include "io/gps.h"
@@ -67,6 +68,8 @@
 #include "io/statusindicator.h"
 #include "io/transponder_ir.h"
 #include "io/vtx_control.h"
+#include "io/vtx_rtc6705.h"
+
 #include "rx/rx.h"
 
 #include "scheduler/scheduler.h"
@@ -83,13 +86,6 @@
 
 
 // June 2013     V2.2-dev
-
-#ifdef VTX_RTC6705
-bool canUpdateVTX(void);
-#define VTX_IF_READY if (canUpdateVTX())
-#else
-#define VTX_IF_READY
-#endif
 
 enum {
     ALIGN_GYRO = 0,
@@ -138,7 +134,7 @@ static bool isCalibrating(void)
 
     // Note: compass calibration is handled completely differently, outside of the main loop, see f.CALIBRATE_MAG
 
-    return (!isAccelerationCalibrationComplete() && sensors(SENSOR_ACC)) || (!isGyroCalibrationComplete());
+    return (!accIsCalibrationComplete() && sensors(SENSOR_ACC)) || (!isGyroCalibrationComplete());
 }
 
 void resetArmingDisabled(void)
@@ -214,8 +210,21 @@ void updateArmingStatus(void)
         }
 
         if (!isUsingSticksForArming()) {
+          /* Ignore ARMING_DISABLED_CALIBRATING if we are going to calibrate gyro on first arm */
+          bool ignoreGyro = armingConfig()->gyro_cal_on_first_arm
+                         && !(getArmingDisableFlags() & ~(ARMING_DISABLED_ARM_SWITCH | ARMING_DISABLED_CALIBRATING));
+
+          /* Ignore ARMING_DISABLED_THROTTLE (once arm switch is on) if we are in 3D mode */
+          bool ignoreThrottle = feature(FEATURE_3D)
+                             && !IS_RC_MODE_ACTIVE(BOX3DDISABLE)
+                             && !isModeActivationConditionPresent(BOX3DONASWITCH)
+                             && !(getArmingDisableFlags() & ~(ARMING_DISABLED_ARM_SWITCH | ARMING_DISABLED_THROTTLE));
+
           // If arming is disabled and the ARM switch is on
-          if (isArmingDisabled() && !(armingConfig()->gyro_cal_on_first_arm && !(getArmingDisableFlags() & ~(ARMING_DISABLED_ARM_SWITCH | ARMING_DISABLED_CALIBRATING))) && IS_RC_MODE_ACTIVE(BOXARM)) {
+          if (isArmingDisabled()
+              && !ignoreGyro
+              && !ignoreThrottle
+              && IS_RC_MODE_ACTIVE(BOXARM)) {
               setArmingDisabled(ARMING_DISABLED_ARM_SWITCH);
           } else if (!IS_RC_MODE_ACTIVE(BOXARM)) {
               unsetArmingDisabled(ARMING_DISABLED_ARM_SWITCH);
@@ -266,10 +275,14 @@ void tryArm(void)
 
             if (!IS_RC_MODE_ACTIVE(BOXFLIPOVERAFTERCRASH)) {
                 flipOverAfterCrashMode = false;
-                pwmWriteDshotCommand(ALL_MOTORS, getMotorCount(), DSHOT_CMD_SPIN_DIRECTION_NORMAL);
+                if (!feature(FEATURE_3D)) {
+                    pwmWriteDshotCommand(ALL_MOTORS, getMotorCount(), DSHOT_CMD_SPIN_DIRECTION_NORMAL);
+                }
             } else {
                 flipOverAfterCrashMode = true;
-                pwmWriteDshotCommand(ALL_MOTORS, getMotorCount(), DSHOT_CMD_SPIN_DIRECTION_REVERSED);
+                if (!feature(FEATURE_3D)) {
+                    pwmWriteDshotCommand(ALL_MOTORS, getMotorCount(), DSHOT_CMD_SPIN_DIRECTION_REVERSED);
+                }
             }
 
             pwmEnableMotors();
@@ -366,6 +379,16 @@ void updateMagHold(void)
 }
 #endif
 
+#ifdef VTX_CONTROL
+static bool canUpdateVTX(void)
+{
+#ifdef VTX_RTC6705
+    return vtxRTC6705CanUpdate();
+#endif
+    return true;
+}
+#endif
+
 /*
  * processRx called from taskUpdateRxMain
  */
@@ -392,7 +415,9 @@ void processRx(timeUs_t currentTimeUs)
     const throttleStatus_e throttleStatus = calculateThrottleStatus();
 
     if (isAirmodeActive() && ARMING_FLAG(ARMED)) {
-        if (rcData[THROTTLE] >= rxConfig()->airModeActivateThreshold) airmodeIsActivated = true; // Prevent Iterm from being reset
+        if (rcData[THROTTLE] >= rxConfig()->airModeActivateThreshold) {
+            airmodeIsActivated = true; // Prevent Iterm from being reset
+        }
     } else {
         airmodeIsActivated = false;
     }
@@ -400,7 +425,7 @@ void processRx(timeUs_t currentTimeUs)
     /* In airmode Iterm should be prevented to grow when Low thottle and Roll + Pitch Centered.
      This is needed to prevent Iterm winding on the ground, but keep full stabilisation on 0 throttle while in air */
     if (throttleStatus == THROTTLE_LOW && !airmodeIsActivated) {
-        pidResetErrorGyroState();
+        pidResetITerm();
         if (currentPidProfile->pidAtMinThrottle)
             pidStabilisationState(PID_STABILISATION_ON);
         else
@@ -536,7 +561,7 @@ void processRx(timeUs_t currentTimeUs)
     }
 #endif
 
-#ifdef USE_GPS
+#ifdef USE_NAV
     if (sensors(SENSOR_GPS)) {
         updateGpsWaypointsAndMode();
     }
@@ -569,7 +594,7 @@ void processRx(timeUs_t currentTimeUs)
 #ifdef VTX_CONTROL
     vtxUpdateActivatedChannel();
 
-    VTX_IF_READY {
+    if (canUpdateVTX()) {
         handleVTXControlButton();
     }
 #endif
@@ -600,11 +625,11 @@ static void subTaskMainSubprocesses(timeUs_t currentTimeUs)
     }
 #endif
 
-#if defined(USE_BARO) || defined(USE_SONAR)
+#if defined(USE_ALT_HOLD)
     // updateRcCommands sets rcCommand, which is needed by updateAltHoldState and updateSonarAltHoldState
     updateRcCommands();
-    if (sensors(SENSOR_BARO) || sensors(SENSOR_SONAR)) {
-        if (FLIGHT_MODE(BARO_MODE) || FLIGHT_MODE(SONAR_MODE)) {
+    if (sensors(SENSOR_BARO) || sensors(SENSOR_RANGEFINDER)) {
+        if (FLIGHT_MODE(BARO_MODE) || FLIGHT_MODE(RANGEFINDER_MODE)) {
             applyAltHold();
         }
     }
@@ -632,7 +657,7 @@ static void subTaskMainSubprocesses(timeUs_t currentTimeUs)
 
     processRcCommand();
 
-#ifdef USE_GPS
+#ifdef USE_NAV
     if (sensors(SENSOR_GPS)) {
         if ((FLIGHT_MODE(GPS_HOME_MODE) || FLIGHT_MODE(GPS_HOLD_MODE)) && STATE(GPS_FIX_HOME)) {
             updateGpsStateForHomeAndHoldMode();
@@ -652,13 +677,13 @@ static void subTaskMainSubprocesses(timeUs_t currentTimeUs)
     UNUSED(currentTimeUs);
 #endif
 
-#ifdef TRANSPONDER
+#ifdef USE_TRANSPONDER
     transponderUpdate(currentTimeUs);
 #endif
     DEBUG_SET(DEBUG_PIDLOOP, 3, micros() - startTime);
 }
 
-static void subTaskMotorUpdate(void)
+static void subTaskMotorUpdate(timeUs_t currentTimeUs)
 {
     uint32_t startTime = 0;
     if (debugMode == DEBUG_CYCLETIME) {
@@ -672,7 +697,7 @@ static void subTaskMotorUpdate(void)
         startTime = micros();
     }
 
-    mixTable(currentPidProfile->vbatPidCompensation);
+    mixTable(currentTimeUs, currentPidProfile->vbatPidCompensation);
 
 #ifdef USE_SERVOS
     // motor outputs are used as sources for servo mixing, so motors must be calculated using mixTable() before servos.
@@ -709,7 +734,7 @@ void taskMainPidLoop(timeUs_t currentTimeUs)
     // 1 - pidController()
     // 2 - subTaskMotorUpdate()
     // 3 - subTaskMainSubprocesses()
-    gyroUpdate();
+    gyroUpdate(currentTimeUs);
     DEBUG_SET(DEBUG_PIDLOOP, 0, micros() - currentTimeUs);
 
     if (pidUpdateCountdown) {
@@ -717,7 +742,7 @@ void taskMainPidLoop(timeUs_t currentTimeUs)
     } else {
         pidUpdateCountdown = setPidUpdateCountDown();
         subTaskPidController(currentTimeUs);
-        subTaskMotorUpdate();
+        subTaskMotorUpdate(currentTimeUs);
         subTaskMainSubprocesses(currentTimeUs);
     }
 

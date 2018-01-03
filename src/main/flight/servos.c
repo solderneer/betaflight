@@ -31,8 +31,8 @@
 
 #include "config/config_reset.h"
 #include "config/feature.h"
-#include "config/parameter_group.h"
-#include "config/parameter_group_ids.h"
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
 #include "drivers/pwm_output.h"
 
@@ -79,7 +79,7 @@ PG_REGISTER_ARRAY_WITH_RESET_FN(servoParam_t, MAX_SUPPORTED_SERVOS, servoParams,
 void pgResetFn_servoParams(servoParam_t *instance)
 {
     for (int i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
-        RESET_CONFIG(const servoParam_t, &instance[i],
+        RESET_CONFIG(servoParam_t, &instance[i],
             .min = DEFAULT_SERVO_MIN,
             .max = DEFAULT_SERVO_MAX,
             .middle = DEFAULT_SERVO_MIDDLE,
@@ -213,10 +213,11 @@ int16_t determineServoMiddleOrForwardFromChannel(servoIndex_e servoIndex)
 int servoDirection(int servoIndex, int inputSource)
 {
     // determine the direction (reversed or not) from the direction bitfield of the servo
-    if (servoParams(servoIndex)->reversedSources & (1 << inputSource))
+    if (servoParams(servoIndex)->reversedSources & (1 << inputSource)) {
         return -1;
-    else
+    } else {
         return 1;
+    }
 }
 
 void servosInit(void)
@@ -224,8 +225,9 @@ void servosInit(void)
     // enable servos for mixes that require them. note, this shifts motor counts.
     useServo = mixers[currentMixerMode].useServo;
     // if we want camstab/trig, that also enables servos, even if mixer doesn't
-    if (feature(FEATURE_SERVO_TILT) || feature(FEATURE_CHANNEL_FORWARDING))
+    if (feature(FEATURE_SERVO_TILT) || feature(FEATURE_CHANNEL_FORWARDING)) {
         useServo = 1;
+    }
 
     // give all servos a default command
     for (uint8_t i = 0; i < MAX_SUPPORTED_SERVOS; i++) {
@@ -242,9 +244,9 @@ void loadCustomServoMixer(void)
     // load custom mixer into currentServoMixer
     for (int i = 0; i < MAX_SERVO_RULES; i++) {
         // check if done
-        if (customServoMixers(i)->rate == 0)
+        if (customServoMixers(i)->rate == 0) {
             break;
-
+        }
         currentServoMixer[i] = *customServoMixers(i);
         servoRuleCount++;
     }
@@ -266,13 +268,11 @@ void servoConfigureOutput(void)
         currentMixerMode == MIXER_CUSTOM_AIRPLANE
     ) {
         ENABLE_STATE(FIXED_WING);
-
         if (currentMixerMode == MIXER_CUSTOM_AIRPLANE) {
             loadCustomServoMixer();
         }
     } else {
         DISABLE_STATE(FIXED_WING);
-
         if (currentMixerMode == MIXER_CUSTOM_TRI) {
             loadCustomServoMixer();
         }
@@ -288,7 +288,6 @@ void servoMixerLoadMix(int index)
     for (int i = 0; i < MAX_SERVO_RULES; i++) {
         customServoMixersMutable(i)->targetChannel = customServoMixersMutable(i)->inputSource = customServoMixersMutable(i)->rate = customServoMixersMutable(i)->box = 0;
     }
-
     for (int i = 0; i < servoMixers[index].servoRuleCount; i++) {
         *customServoMixersMutable(i) = servoMixers[index].rule[i];
     }
@@ -297,8 +296,8 @@ void servoMixerLoadMix(int index)
 STATIC_UNIT_TESTED void forwardAuxChannelsToServos(uint8_t firstServoIndex)
 {
     // start forwarding from this channel
-    uint8_t channelOffset = servoConfig()->channelForwardingStartChannel;
-    for (uint8_t servoOffset = 0; servoOffset < MAX_AUX_CHANNEL_COUNT && channelOffset < MAX_SUPPORTED_RC_CHANNEL_COUNT; servoOffset++) {
+    int channelOffset = servoConfig()->channelForwardingStartChannel;
+    for (int servoOffset = 0; servoOffset < MAX_AUX_CHANNEL_COUNT && channelOffset < MAX_SUPPORTED_RC_CHANNEL_COUNT; servoOffset++) {
         pwmWriteServo(firstServoIndex + servoOffset, rcData[channelOffset++]);
     }
 }
@@ -329,7 +328,7 @@ void writeServos(void)
         pwmWriteServo(servoIndex++, servo[SERVO_HELI_RIGHT]);
         pwmWriteServo(servoIndex++, servo[SERVO_HELI_TOP]);
         pwmWriteServo(servoIndex++, servo[SERVO_HELI_RUD]);
-    break;
+        break;
 
     case MIXER_TRI:
     case MIXER_CUSTOM_TRI:
@@ -535,7 +534,6 @@ static void filterServos(void)
 #if defined(MIXER_DEBUG)
     uint32_t startTime = micros();
 #endif
-
     if (servoConfig()->servo_lowpass_freq) {
         for (int servoIdx = 0; servoIdx < MAX_SUPPORTED_SERVOS; servoIdx++) {
             servo[servoIdx] = lrintf(biquadFilterApply(&servoFilter[servoIdx], (float)servo[servoIdx]));
@@ -547,4 +545,4 @@ static void filterServos(void)
     debug[0] = (int16_t)(micros() - startTime);
 #endif
 }
-#endif
+#endif // USE_SERVOS

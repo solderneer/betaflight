@@ -110,11 +110,12 @@
 #define MAG_HMC5883_ALIGN       CW180_DEG
 */
 
-//#define USE_SONAR
-//#define SONAR_TRIGGER_PIN       PB0
-//#define SONAR_ECHO_PIN          PB1
-//#define SONAR_TRIGGER_PIN_PWM   PB8
-//#define SONAR_ECHO_PIN_PWM      PB9
+//#define USE_RANGEFINDER
+//#define USE_RANGEFINDER_HCSR04
+//#define RANGEFINDER_HCSR04_TRIGGER_PIN       PB0
+//#define RANGEFINDER_HCSR04_ECHO_PIN          PB1
+//#define RANGEFINDER_HCSR04_TRIGGER_PIN_PWM   PB8
+//#define RANGEFINDER_HCSR04_ECHO_PIN_PWM      PB9
 
 #define USE_UART1
 #define USE_UART2
@@ -146,8 +147,6 @@
 #define VBAT_ADC_PIN            PA4
 #define RSSI_ADC_PIN            PA1
 #define EXTERNAL1_ADC_PIN       PA5
-
-#define USE_SPEKTRUM_BIND_PIN
 
 #define DEFAULT_RX_FEATURE      FEATURE_RX_PPM
 

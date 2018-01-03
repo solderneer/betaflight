@@ -181,8 +181,10 @@ static void xBusUnpackRJ01Frame(void)
 }
 
 // Receive ISR callback
-static void xBusDataReceive(uint16_t c)
+static void xBusDataReceive(uint16_t c, void *data)
 {
+    UNUSED(data);
+
     uint32_t now;
     static uint32_t xBusTimeLast, xBusTimeInterval;
 
@@ -218,6 +220,7 @@ static void xBusDataReceive(uint16_t c)
         switch (xBusProvider) {
         case SERIALRX_XBUS_MODE_B:
             xBusUnpackModeBFrame(0);
+            FALLTHROUGH; //!!TODO - check this fall through is correct
         case SERIALRX_XBUS_MODE_B_RJ01:
             xBusUnpackRJ01Frame();
         }
@@ -227,8 +230,10 @@ static void xBusDataReceive(uint16_t c)
 }
 
 // Indicate time to read a frame from the data...
-static uint8_t xBusFrameStatus(void)
+static uint8_t xBusFrameStatus(rxRuntimeConfig_t *rxRuntimeConfig)
 {
+    UNUSED(rxRuntimeConfig);
+
     if (!xBusFrameReceived) {
         return RX_FRAME_PENDING;
     }
@@ -301,6 +306,7 @@ bool xBusInit(const rxConfig_t *rxConfig, rxRuntimeConfig_t *rxRuntimeConfig)
     serialPort_t *xBusPort = openSerialPort(portConfig->identifier,
         FUNCTION_RX_SERIAL,
         xBusDataReceive,
+        NULL,
         baudRate,
         portShared ? MODE_RXTX : MODE_RX,
         (rxConfig->serialrx_inverted ? SERIAL_INVERTED : 0) | (rxConfig->halfDuplex ? SERIAL_BIDIR : 0)

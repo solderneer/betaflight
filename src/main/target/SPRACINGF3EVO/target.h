@@ -25,10 +25,8 @@
 #define TARGET_BOARD_IDENTIFIER "SPEV"
 #endif
 
+#if !defined(AIORACERF3)
 #define USE_TARGET_CONFIG
-
-#ifdef AIORACERF3
-#undef USE_TARGET_CONFIG // no space left
 #endif
 
 #ifdef SPRACINGF3MQ
@@ -38,12 +36,14 @@
 #define SPRACINGF3MQ_REV 2
 #endif
 
-#undef USE_UNCOMMON_MIXERS // no space left
-#endif
-#undef USE_TELEMETRY_JETIEXBUS // no space left
-#undef USE_SERIALRX_JETIEXBUS // no space left 
-#undef USE_DASHBOARD // no space left
-#undef USE_RTC_TIME // no space left
+#endif // SPRACINGF3MQ
+
+// Space reduction measures to make the firmware fit into flash:
+#undef USE_TELEMETRY_JETIEXBUS
+#undef USE_SERIALRX_JETIEXBUS
+#undef USE_TELEMETRY_MAVLINK
+#undef USE_DASHBOARD
+
 
 #define CONFIG_FASTLOOP_PREFERRED_ACC ACC_DEFAULT
 
@@ -82,7 +82,8 @@
 
 #define MAG_AK8963_ALIGN CW90_DEG_FLIP
 
-//#define USE_SONAR
+//#define USE_RANGEFINDER
+//#define USE_RANGEFINDER_HCSR04
 
 #define USE_VCP
 #define USE_UART1
@@ -169,7 +170,7 @@
 #define USE_OSD_OVER_MSP_DISPLAYPORT
 #define USE_MSP_CURRENT_METER
 
-#define TRANSPONDER
+#define USE_TRANSPONDER
 
 #define ENABLE_BLACKBOX_LOGGING_ON_SDCARD_BY_DEFAULT
 

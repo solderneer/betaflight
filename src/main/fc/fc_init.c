@@ -30,55 +30,67 @@
 
 #include "config/config_eeprom.h"
 #include "config/feature.h"
-#include "config/parameter_group.h"
-#include "config/parameter_group_ids.h"
 
 #include "cms/cms.h"
 #include "cms/cms_types.h"
 
-#include "drivers/nvic.h"
-#include "drivers/sensor.h"
-#include "drivers/system.h"
-#include "drivers/time.h"
-#include "drivers/dma.h"
-#include "drivers/io.h"
-#include "drivers/light_led.h"
-#include "drivers/sound_beeper.h"
-#include "drivers/timer.h"
-#include "drivers/serial.h"
-#include "drivers/serial_softserial.h"
-#include "drivers/serial_uart.h"
 #include "drivers/accgyro/accgyro.h"
+#include "drivers/camera_control.h"
 #include "drivers/compass/compass.h"
 #include "drivers/pwm_esc_detect.h"
-#include "drivers/rx_pwm.h"
 #include "drivers/pwm_output.h"
 #include "drivers/adc.h"
 #include "drivers/bus.h"
 #include "drivers/bus_i2c.h"
 #include "drivers/bus_spi.h"
 #include "drivers/buttons.h"
-#include "drivers/inverter.h"
+#include "drivers/camera_control.h"
+#include "drivers/compass/compass.h"
+#include "drivers/dma.h"
+#include "drivers/exti.h"
 #include "drivers/flash_m25p16.h"
-#include "drivers/sonar_hcsr04.h"
+#include "drivers/inverter.h"
+#include "drivers/io.h"
+#include "drivers/light_led.h"
+#include "drivers/nvic.h"
+#include "drivers/pwm_esc_detect.h"
+#include "drivers/pwm_output.h"
+#include "drivers/rx/rx_pwm.h"
+#include "drivers/sensor.h"
+#include "drivers/serial.h"
+#include "drivers/serial_softserial.h"
+#include "drivers/serial_uart.h"
 #include "drivers/sdcard.h"
-#include "drivers/usb_io.h"
+#include "drivers/sound_beeper.h"
+#include "drivers/system.h"
+#include "drivers/time.h"
+#include "drivers/timer.h"
 #include "drivers/transponder_ir.h"
 #include "drivers/exti.h"
-#include "drivers/max7456.h"
+#include "drivers/usb_io.h"
 #include "drivers/vtx_rtc6705.h"
 #include "drivers/vtx_common.h"
-#include "drivers/camera_control.h"
 
 #include "fc/config.h"
 #include "fc/fc_init.h"
-#include "fc/fc_msp.h"
 #include "fc/fc_tasks.h"
 #include "fc/rc_controls.h"
 #include "fc/runtime_config.h"
-#include "fc/cli.h"
+
+#include "interface/cli.h"
+#include "interface/msp.h"
 
 #include "msp/msp_serial.h"
+
+#include "pg/adc.h"
+#include "pg/beeper_dev.h"
+#include "pg/bus_i2c.h"
+#include "pg/bus_spi.h"
+#include "pg/flash.h"
+#include "pg/pg.h"
+#include "pg/rx_pwm.h"
+#include "pg/sdcard.h"
+#include "pg/vcd.h"
 
 #include "rx/rx.h"
 #include "rx/rx_spi.h"
@@ -87,6 +99,7 @@
 #include "io/beeper.h"
 #include "io/displayport_max7456.h"
 #include "io/displayport_rcdevice.h"
+#include "io/displayport_srxl.h"
 #include "io/serial.h"
 #include "io/flashfs.h"
 #include "io/gps.h"
@@ -117,7 +130,6 @@
 #include "sensors/gyro.h"
 #include "sensors/initialisation.h"
 #include "sensors/sensors.h"
-#include "sensors/sonar.h"
 
 #include "telemetry/telemetry.h"
 
@@ -159,18 +171,6 @@ void processLoopback(void)
     }
 #endif
 }
-
-#ifdef VTX_RTC6705
-bool canUpdateVTX(void)
-{
-#if defined(MAX7456_SPI_INSTANCE) && defined(RTC6705_SPI_INSTANCE) && defined(SPI_SHARED_MAX7456_AND_RTC6705)
-    if (feature(FEATURE_OSD)) {
-        return !max7456DmaInProgress();
-    }
-#endif
-    return true;
-}
-#endif
 
 #ifdef BUS_SWITCH_PIN
 void busSwitchInit(void)
@@ -246,6 +246,14 @@ void spiPreInit(void)
 
 void init(void)
 {
+#ifdef USE_ITCM_RAM
+    /* Load functions into ITCM RAM */
+    extern unsigned char tcm_code_start;
+    extern unsigned char tcm_code_end;
+    extern unsigned char tcm_code;
+    memcpy(&tcm_code_start, &tcm_code, (int)(&tcm_code_end - &tcm_code_start));
+#endif
+
 #ifdef USE_HAL_DRIVER
     HAL_Init();
 #endif
@@ -420,7 +428,7 @@ void init(void)
 #else
 
 #ifdef USE_SPI
-    spiPinConfigure();
+    spiPinConfigure(spiPinConfig());
 
     // Initialize CS lines and keep them high
     spiPreInit();
@@ -440,7 +448,7 @@ void init(void)
 #endif // USE_SPI
 
 #ifdef USE_I2C
-    i2cHardwareConfigure();
+    i2cHardwareConfigure(i2cConfig());
 
     // Note: Unlike UARTs which are configured when client is present,
     // I2C buses are initialized unconditionally if they are configured.
@@ -473,14 +481,16 @@ void init(void)
     cameraControlInit();
 #endif
 
-#if defined(SONAR_SOFTSERIAL2_EXCLUSIVE) && defined(USE_SONAR) && defined(USE_SOFTSERIAL2)
-    if (feature(FEATURE_SONAR) && feature(FEATURE_SOFTSERIAL)) {
+// XXX These kind of code should goto target/config.c?
+// XXX And these no longer work properly as FEATURE_RANGEFINDER does control HCSR04 runtime configuration.
+#if defined(RANGEFINDER_HCSR04_SOFTSERIAL2_EXCLUSIVE) && defined(USE_RANGEFINDER_HCSR04) && defined(USE_SOFTSERIAL2)
+    if (feature(FEATURE_RANGEFINDER) && feature(FEATURE_SOFTSERIAL)) {
         serialRemovePort(SERIAL_PORT_SOFTSERIAL2);
     }
 #endif
 
-#if defined(SONAR_SOFTSERIAL1_EXCLUSIVE) && defined(USE_SONAR) && defined(USE_SOFTSERIAL1)
-    if (feature(FEATURE_SONAR) && feature(FEATURE_SOFTSERIAL)) {
+#if defined(RANGEFINDER_HCSR04_SOFTSERIAL1_EXCLUSIVE) && defined(USE_RANGEFINDER_HCSR04) && defined(USE_SOFTSERIAL1)
+    if (feature(FEATURE_RANGEFINDER) && feature(FEATURE_SOFTSERIAL)) {
         serialRemovePort(SERIAL_PORT_SOFTSERIAL1);
     }
 #endif
@@ -508,7 +518,7 @@ void init(void)
     // so we are ready to call validateAndFixGyroConfig(), pidInit(), and setAccelerationFilter()
     validateAndFixGyroConfig();
     pidInit(currentPidProfile);
-    setAccelerationFilter(accelerometerConfig()->acc_lpf_hz);
+    accInitFilters();
 
 #ifdef USE_SERVOS
     servosInit();
@@ -596,11 +606,17 @@ void init(void)
     }
 #endif
 
+#if defined(USE_CMS) && defined(USE_SPEKTRUM_CMS_TELEMETRY)
+    // Register the srxl Textgen telemetry sensor as a displayport device
+    cmsDisplayPortRegister(displayPortSrxlInit());
+#endif
 
 #ifdef USE_GPS
     if (feature(FEATURE_GPS)) {
         gpsInit();
+#ifdef USE_NAV
         navigationInit();
+#endif
     }
 #endif
 
@@ -628,7 +644,7 @@ void init(void)
     usbCableDetectInit();
 #endif
 
-#ifdef TRANSPONDER
+#ifdef USE_TRANSPONDER
     if (feature(FEATURE_TRANSPONDER)) {
         transponderInit();
         transponderStartRepeating();

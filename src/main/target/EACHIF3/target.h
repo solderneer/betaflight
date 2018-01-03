@@ -60,7 +60,7 @@
 #define SPI2_MISO_PIN           PB14
 #define SPI2_MOSI_PIN           PB15
 #define RX_NSS_PIN              SPI2_NSS_PIN
-#define RX_FLYSKY_BIND_PIN      PA1
+#define BINDPLUG_PIN            PA1
 
 
 #define USE_I2C
@@ -97,7 +97,8 @@
 
 #undef USE_GPS
 #undef USE_MAG
-#undef USE_SONAR
+#undef USE_RANGEFINDER
+#undef USE_RANGEFINDER_HCSR04
 #undef USE_SERVOS
 #undef BEEPER
 

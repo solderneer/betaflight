@@ -21,10 +21,12 @@
 #undef USE_TELEMETRY_IBUS
 #undef USE_TELEMETRY_HOTT
 #undef USE_TELEMETRY_JETIEXBUS
+#undef USE_SERIALRX_JETIEXBUS
 #undef USE_TELEMETRY_MAVLINK
 #undef USE_TELEMETRY_LTM
 #undef USE_RCDEVICE
-#undef USE_RTC_TIME
+#undef USE_DASHBOARD
+
 
 #define TARGET_BOARD_IDENTIFIER "OMNI" // https://en.wikipedia.org/wiki/Omnibus
 
@@ -57,9 +59,10 @@
 #define USE_BARO_BMP280
 #define USE_BARO_SPI_BMP280
 
-//#define USE_SONAR
-//#define SONAR_ECHO_PIN          PB1
-//#define SONAR_TRIGGER_PIN       PB0
+//#define USE_RANGEFINDER
+//#define USE_RANGEFINDER_HCSR04
+//#define RANGEFINDER_HCSR04_ECHO_PIN          PB1
+//#define RANGEFINDER_HCSR04_TRIGGER_PIN       PB0
 
 #define USB_DETECT_PIN          PB5
 
@@ -67,8 +70,10 @@
 #define USE_UART1
 #define USE_UART2
 #define USE_UART3
+#define USE_SOFTSERIAL1
+#define USE_SOFTSERIAL2
 
-#define SERIAL_PORT_COUNT       4
+#define SERIAL_PORT_COUNT       6
 
 #define UART1_TX_PIN            PA9
 #define UART1_RX_PIN            PA10
@@ -153,7 +158,7 @@
 //#define RSSI_ADC_PIN                PB1
 //#define ADC_INSTANCE                ADC3
 
-#define TRANSPONDER
+#define USE_TRANSPONDER
 #define REDUCE_TRANSPONDER_CURRENT_DRAW_WHEN_USB_CABLE_PRESENT
 
 #define ENABLE_BLACKBOX_LOGGING_ON_SDCARD_BY_DEFAULT

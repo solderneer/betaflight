@@ -24,6 +24,7 @@
 #include "platform.h"
 
 #include "blackbox/blackbox.h"
+#include "blackbox/blackbox_fielddefs.h"
 
 #include "build/build_config.h"
 
@@ -33,18 +34,14 @@
 
 #include "drivers/time.h"
 
-#include "config/parameter_group.h"
-#include "config/parameter_group_ids.h"
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 #include "config/feature.h"
 
 #include "flight/pid.h"
 
 #include "io/beeper.h"
 #include "io/motors.h"
-
-#if defined(OSD) && defined(USE_OSD_ADJUSTMENTS) 
-#include "io/osd.h"
-#endif
 
 #include "fc/config.h"
 #include "fc/controlrate_profile.h"
@@ -98,11 +95,6 @@ STATIC_UNIT_TESTED uint8_t adjustmentStateMask = 0;
 #define MARK_ADJUSTMENT_FUNCTION_AS_READY(adjustmentIndex) adjustmentStateMask &= ~(1 << adjustmentIndex)
 
 #define IS_ADJUSTMENT_FUNCTION_BUSY(adjustmentIndex) (adjustmentStateMask & (1 << adjustmentIndex))
-
-bool isAnyAdjustmentFunctionBusy()
-{
-    return adjustmentStateMask != 0;
-}
 
 // sync with adjustmentFunction_e
 static const adjustmentConfig_t defaultAdjustmentConfigs[ADJUSTMENT_FUNCTION_COUNT - 1] = {
@@ -206,8 +198,8 @@ static const adjustmentConfig_t defaultAdjustmentConfigs[ADJUSTMENT_FUNCTION_COU
     }
 };
 
-#if defined(OSD) && defined(USE_OSD_ADJUSTMENTS)
-static const char * adjustmentLabels[] = {
+#if defined(USE_OSD) && defined(USE_OSD_ADJUSTMENTS)
+static const char * const adjustmentLabels[] = {
     "RC RATE",
     "RC EXPO",
     "THROTTLE EXPO",
@@ -233,6 +225,9 @@ static const char * adjustmentLabels[] = {
     "D SETPOINT TRANSITION",
     "HORIZON STRENGTH",
 };
+
+const char *adjustmentRangeName;
+int adjustmentRangeValue = -1;
 #endif
 
 #define ADJUSTMENT_FUNCTION_CONFIG_INDEX_OFFSET 1
@@ -284,7 +279,8 @@ static int applyStepAdjustment(controlRateConfig_t *controlRateConfig, uint8_t a
         if (adjustmentFunction == ADJUSTMENT_PITCH_RATE) {
             break;
         }
-        // follow though for combined ADJUSTMENT_PITCH_ROLL_RATE
+        // fall through for combined ADJUSTMENT_PITCH_ROLL_RATE
+        FALLTHROUGH;
     case ADJUSTMENT_ROLL_RATE:
         newValue = constrain((int)controlRateConfig->rates[FD_ROLL] + delta, 0, CONTROL_RATE_CONFIG_ROLL_PITCH_RATE_MAX);
         controlRateConfig->rates[FD_ROLL] = newValue;
@@ -304,7 +300,8 @@ static int applyStepAdjustment(controlRateConfig_t *controlRateConfig, uint8_t a
         if (adjustmentFunction == ADJUSTMENT_PITCH_P) {
             break;
         }
-        // follow though for combined ADJUSTMENT_PITCH_ROLL_P
+        // fall through for combined ADJUSTMENT_PITCH_ROLL_P
+        FALLTHROUGH;
     case ADJUSTMENT_ROLL_P:
         newValue = constrain((int)pidProfile->pid[PID_ROLL].P + delta, 0, 200); // FIXME magic numbers repeated in cli.c
         pidProfile->pid[PID_ROLL].P = newValue;
@@ -318,7 +315,8 @@ static int applyStepAdjustment(controlRateConfig_t *controlRateConfig, uint8_t a
         if (adjustmentFunction == ADJUSTMENT_PITCH_I) {
             break;
         }
-        // fall though for combined ADJUSTMENT_PITCH_ROLL_I
+        // fall through for combined ADJUSTMENT_PITCH_ROLL_I
+        FALLTHROUGH;
     case ADJUSTMENT_ROLL_I:
         newValue = constrain((int)pidProfile->pid[PID_ROLL].I + delta, 0, 200); // FIXME magic numbers repeated in cli.c
         pidProfile->pid[PID_ROLL].I = newValue;
@@ -332,7 +330,8 @@ static int applyStepAdjustment(controlRateConfig_t *controlRateConfig, uint8_t a
         if (adjustmentFunction == ADJUSTMENT_PITCH_D) {
             break;
         }
-        // fall though for combined ADJUSTMENT_PITCH_ROLL_D
+        // fall through for combined ADJUSTMENT_PITCH_ROLL_D
+        FALLTHROUGH;
     case ADJUSTMENT_ROLL_D:
         newValue = constrain((int)pidProfile->pid[PID_ROLL].D + delta, 0, 200); // FIXME magic numbers repeated in cli.c
         pidProfile->pid[PID_ROLL].D = newValue;
@@ -434,6 +433,10 @@ void processRcAdjustments(controlRateConfig_t *controlRateConfig)
         if (cmp32(now, adjustmentState->timeoutAt) >= 0) {
             adjustmentState->timeoutAt = now + RESET_FREQUENCY_2HZ;
             MARK_ADJUSTMENT_FUNCTION_AS_READY(adjustmentIndex);
+
+#if defined(USE_OSD) && defined(USE_OSD_ADJUSTMENTS)
+            adjustmentRangeValue = -1;
+#endif
         }
 
         if (!canUseRxData) {
@@ -466,9 +469,10 @@ void processRcAdjustments(controlRateConfig_t *controlRateConfig)
             newValue = applySelectAdjustment(adjustmentFunction, position);
         }
 
-#if defined(OSD) && defined(USE_OSD_ADJUSTMENTS)
-        if (newValue != -1) {
-            osdShowAdjustment(adjustmentLabels[adjustmentFunction], newValue);
+#if defined(USE_OSD) && defined(USE_OSD_ADJUSTMENTS)
+        if (newValue != -1 && adjustmentState->config->adjustmentFunction != ADJUSTMENT_RATE_PROFILE) { // Rate profile already has an OSD element
+            adjustmentRangeName = &adjustmentLabels[adjustmentFunction - 1][0];
+            adjustmentRangeValue = newValue;
         }
 #else
         UNUSED(newValue);

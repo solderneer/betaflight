@@ -31,12 +31,10 @@
 
 #include "config/config_reset.h"
 #include "config/feature.h"
-#include "config/parameter_group.h"
-#include "config/parameter_group_ids.h"
 
 #include "drivers/adc.h"
-#include "drivers/rx_pwm.h"
-#include "drivers/rx_spi.h"
+#include "drivers/rx/rx_pwm.h"
+#include "drivers/rx/rx_spi.h"
 #include "drivers/time.h"
 
 #include "fc/config.h"
@@ -46,6 +44,9 @@
 #include "flight/failsafe.h"
 
 #include "io/serial.h"
+
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
 #include "rx/rx.h"
 #include "rx/pwm.h"
@@ -67,7 +68,12 @@
 
 const char rcChannelLetters[] = "AERT12345678abcdefgh";
 
-uint16_t rssi = 0;                  // range: [0;1023]
+static uint16_t rssi = 0;                  // range: [0;1023]
+static timeUs_t lastMspRssiUpdateUs = 0;
+
+#define MSP_RSSI_TIMEOUT_US 1500000   // 1.5 sec
+
+rssiSource_t rssiSource;
 
 static bool rxDataReceived = false;
 static bool rxSignalReceived = false;
@@ -191,8 +197,10 @@ static uint16_t nullReadRawRC(const rxRuntimeConfig_t *rxRuntimeConfig, uint8_t 
     return PPM_RCVR_TIMEOUT;
 }
 
-static uint8_t nullFrameStatus(void)
+static uint8_t nullFrameStatus(rxRuntimeConfig_t *rxRuntimeConfig)
 {
+    UNUSED(rxRuntimeConfig);
+
     return RX_FRAME_PENDING;
 }
 
@@ -356,6 +364,15 @@ void rxInit(void)
     }
 #endif
 
+#if defined(USE_ADC)
+    if (feature(FEATURE_RSSI_ADC)) {
+        rssiSource = RSSI_SOURCE_ADC;
+    } else
+#endif
+    if (rxConfig()->rssi_channel > 0) {
+        rssiSource = RSSI_SOURCE_RX_CHANNEL;
+    }
+
     rxChannelCount = MIN(rxConfig()->max_aux_channel + NON_AUX_CHANNEL_COUNT, rxRuntimeConfig.channelCount);
 }
 
@@ -417,7 +434,7 @@ bool rxUpdateCheck(timeUs_t currentTimeUs, timeDelta_t currentDeltaTime)
 #endif
     {
         rxDataReceived = false;
-        const uint8_t frameStatus = rxRuntimeConfig.rcFrameStatusFn();
+        const uint8_t frameStatus = rxRuntimeConfig.rcFrameStatusFn(&rxRuntimeConfig);
         if (frameStatus & RX_FRAME_COMPLETE) {
             rxDataReceived = true;
             rxIsInFailsafeMode = (frameStatus & RX_FRAME_FAILSAFE) != 0;
@@ -608,6 +625,50 @@ void parseRcChannels(const char *input, rxConfig_t *rxConfig)
     }
 }
 
+void setRssiFiltered(uint16_t newRssi, rssiSource_t source)
+{
+    if (source != rssiSource) {
+        return;
+    }
+
+    rssi = newRssi;
+}
+
+#define RSSI_SAMPLE_COUNT 16
+#define RSSI_MAX_VALUE 1023
+
+void setRssiUnfiltered(uint16_t rssiValue, rssiSource_t source)
+{
+    if (source != rssiSource) {
+        return;
+    }
+
+    static uint16_t rssiSamples[RSSI_SAMPLE_COUNT];
+    static uint8_t rssiSampleIndex = 0;
+    static unsigned sum = 0;
+
+    sum = sum + rssiValue;
+    sum = sum - rssiSamples[rssiSampleIndex];
+    rssiSamples[rssiSampleIndex] = rssiValue;
+    rssiSampleIndex = (rssiSampleIndex + 1) % RSSI_SAMPLE_COUNT;
+
+    int16_t rssiMean = sum / RSSI_SAMPLE_COUNT;
+
+    rssi = rssiMean;
+}
+
+void setRssiMsp(uint8_t newMspRssi)
+{
+    if (rssiSource == RSSI_SOURCE_NONE) {
+        rssiSource = RSSI_SOURCE_MSP;
+    }
+
+    if (rssiSource == RSSI_SOURCE_MSP) {
+        rssi = ((uint16_t)newMspRssi) << 2;
+        lastMspRssiUpdateUs = micros();
+    }
+}
+
 static void updateRSSIPWM(void)
 {
     // Read value of AUX channel as rssi
@@ -619,7 +680,7 @@ static void updateRSSIPWM(void)
     }
 
     // Range of rawPwmRssi is [1000;2000]. rssi should be in [0;1023];
-    rssi = (uint16_t)((constrain(pwmRssi - 1000, 0, 1000) / 1000.0f) * 1023.0f);
+    setRssiFiltered(constrain((uint16_t)(((pwmRssi - 1000) / 1000.0f) * 1024.0f), 0, RSSI_MAX_VALUE), RSSI_SOURCE_RX_CHANNEL);
 }
 
 static void updateRSSIADC(timeUs_t currentTimeUs)
@@ -635,48 +696,43 @@ static void updateRSSIADC(timeUs_t currentTimeUs)
     rssiUpdateAt = currentTimeUs + DELAY_50_HZ;
 
     const uint16_t adcRssiSample = adcGetChannel(ADC_RSSI);
-    const uint8_t rssiPercentage = adcRssiSample / rxConfig()->rssi_scale;
-
-    processRssi(rssiPercentage);
-#endif
-}
-
-#define RSSI_SAMPLE_COUNT 16
-
-void processRssi(uint8_t rssiPercentage)
-{
-    static uint8_t rssiSamples[RSSI_SAMPLE_COUNT];
-    static uint8_t rssiSampleIndex = 0;
-
-    rssiSampleIndex = (rssiSampleIndex + 1) % RSSI_SAMPLE_COUNT;
-
-    rssiSamples[rssiSampleIndex] = rssiPercentage;
-
-    int16_t rssiMean = 0;
-    for (int sampleIndex = 0; sampleIndex < RSSI_SAMPLE_COUNT; sampleIndex++) {
-        rssiMean += rssiSamples[sampleIndex];
-    }
-
-    rssiMean = rssiMean / RSSI_SAMPLE_COUNT;
-
-    rssiMean=constrain(rssiMean, 0, 100);
+    uint16_t rssiValue = (uint16_t)((1024.0f * adcRssiSample) / (rxConfig()->rssi_scale * 100.0f));
+    rssiValue = constrain(rssiValue, 0, RSSI_MAX_VALUE);
 
     // RSSI_Invert option
     if (rxConfig()->rssi_invert) {
-        rssiMean = 100 - rssiMean;
+        rssiValue = RSSI_MAX_VALUE - rssiValue;
     }
 
-    rssi = (uint16_t)((rssiMean / 100.0f) * 1023.0f);
+    setRssiUnfiltered((uint16_t)rssiValue, RSSI_SOURCE_ADC);
+#endif
 }
 
 void updateRSSI(timeUs_t currentTimeUs)
 {
-
-    if (rxConfig()->rssi_channel > 0) {
+    switch (rssiSource) {
+    case RSSI_SOURCE_RX_CHANNEL:
         updateRSSIPWM();
-    } else if (feature(FEATURE_RSSI_ADC)) {
+
+        break;
+    case RSSI_SOURCE_ADC:
         updateRSSIADC(currentTimeUs);
+
+        break;
+    case RSSI_SOURCE_MSP:
+        if (cmpTimeUs(micros(), lastMspRssiUpdateUs) > MSP_RSSI_TIMEOUT_US) {
+            rssi = 0;
+        }
+
+        break;
+    default:
+        break;
     }
+}
+
+uint16_t getRssi(void)
+{
+    return rssi;
 }
 
 uint16_t rxGetRefreshRate(void)

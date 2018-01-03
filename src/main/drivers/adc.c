@@ -20,17 +20,23 @@
 
 #include "platform.h"
 
-#include "build/build_config.h"
-#include "build/debug.h"
-
-#include "adc.h"
-#include "adc_impl.h"
+#ifdef USE_ADC
 
 #include "common/utils.h"
 
+#include "build/build_config.h"
+#include "build/debug.h"
+
+#include "drivers/adc_impl.h"
+#include "drivers/io.h"
+
+#include "pg/adc.h"
+
+#include "adc.h"
+
+
 //#define DEBUG_ADC_CHANNELS
 
-#ifdef USE_ADC
 adcOperatingConfig_t adcOperatingConfig[ADC_CHANNEL_COUNT];
 volatile uint16_t adcValues[ADC_CHANNEL_COUNT];
 
@@ -96,18 +102,18 @@ bool adcVerifyPin(ioTag_t tag, ADCDevice device)
     }
 
     for (int map = 0 ; map < ADC_TAG_MAP_COUNT ; map++) {
+#if defined(STM32F1)
+        UNUSED(device);
+        if ((adcTagMap[map].tag == tag)) {
+            return true;
+        }
+#else
         if ((adcTagMap[map].tag == tag) && (adcTagMap[map].devices & (1 << device))) {
             return true;
         }
+#endif
     }
 
     return false;
-}
-
-#else
-uint16_t adcGetChannel(uint8_t channel)
-{
-    UNUSED(channel);
-    return 0;
 }
 #endif

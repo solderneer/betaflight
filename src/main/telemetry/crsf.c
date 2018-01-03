@@ -23,13 +23,13 @@
 
 #ifdef USE_TELEMETRY
 
-#include "config/feature.h"
 #include "build/atomic.h"
 #include "build/build_config.h"
 #include "build/version.h"
 
-#include "config/parameter_group.h"
-#include "config/parameter_group_ids.h"
+#include "config/feature.h"
+#include "pg/pg.h"
+#include "pg/pg_ids.h"
 
 #include "common/crc.h"
 #include "common/maths.h"
@@ -39,27 +39,26 @@
 
 #include "drivers/nvic.h"
 
-#include "sensors/battery.h"
+#include "fc/config.h"
+#include "fc/rc_modes.h"
+#include "fc/runtime_config.h"
+
+#include "flight/imu.h"
+
+#include "interface/crsf_protocol.h"
 
 #include "io/gps.h"
 #include "io/serial.h"
 
-#include "fc/rc_modes.h"
-#include "fc/runtime_config.h"
-
-#include "io/gps.h"
-
-#include "flight/imu.h"
-
-#include "rx/rx.h"
 #include "rx/crsf.h"
+
+#include "sensors/battery.h"
+#include "sensors/sensors.h"
 
 #include "telemetry/telemetry.h"
 #include "telemetry/crsf.h"
 #include "telemetry/msp_shared.h"
 
-#include "fc/config.h"
-#include "sensors/sensors.h"
 
 #define CRSF_CYCLETIME_US                   100000 // 100ms, 10 Hz
 #define CRSF_DEVICEINFO_VERSION             0x01
@@ -297,7 +296,7 @@ void crsfFrameDeviceInfo(sbuf_t *dst) {
     sbufWriteU8(dst, 0);
     sbufWriteU8(dst, CRSF_FRAMETYPE_DEVICE_INFO);
     sbufWriteU8(dst, CRSF_ADDRESS_RADIO_TRANSMITTER);
-    sbufWriteU8(dst, CRSF_ADDRESS_BETAFLIGHT);
+    sbufWriteU8(dst, CRSF_ADDRESS_FLIGHT_CONTROLLER);
     sbufWriteStringWithZeroTerminator(dst, buff);
     for (unsigned int ii=0; ii<12; ii++) {
         sbufWriteU8(dst, 0x00);
@@ -340,7 +339,7 @@ void crsfSendMspResponse(uint8_t *payload)
     sbufWriteU8(dst, CRSF_FRAME_TX_MSP_FRAME_SIZE + CRSF_FRAME_LENGTH_EXT_TYPE_CRC);
     sbufWriteU8(dst, CRSF_FRAMETYPE_MSP_RESP);
     sbufWriteU8(dst, CRSF_ADDRESS_RADIO_TRANSMITTER);
-    sbufWriteU8(dst, CRSF_ADDRESS_BETAFLIGHT);
+    sbufWriteU8(dst, CRSF_ADDRESS_FLIGHT_CONTROLLER);
     sbufWriteData(dst, payload, CRSF_FRAME_TX_MSP_FRAME_SIZE);
     crsfFinalize(dst);
 }
@@ -400,7 +399,7 @@ void initCrsfTelemetry(void)
     if (sensors(SENSOR_ACC)) {
         crsfSchedule[index++] = BV(CRSF_FRAME_ATTITUDE_INDEX);
     }
-    if (batteryConfig()->voltageMeterSource != VOLTAGE_METER_NONE || batteryConfig()->currentMeterSource != CURRENT_METER_NONE) {
+    if (isBatteryVoltageAvailable() || isAmperageAvailable()) {
         crsfSchedule[index++] = BV(CRSF_FRAME_BATTERY_SENSOR_INDEX);
     }
     crsfSchedule[index++] = BV(CRSF_FRAME_FLIGHT_MODE_INDEX);

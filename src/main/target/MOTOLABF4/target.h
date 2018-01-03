@@ -26,8 +26,6 @@
 #define TARGET_BOARD_IDENTIFIER "MLTY"
 #endif
 
-#define CONFIG_START_FLASH_ADDRESS (0x08080000) //0x08080000 to 0x080A0000 (FLASH_Sector_8)
-
 #define USBD_PRODUCT_STRING "MotoLabF4"
 
 #define LED0_PIN                PC3
@@ -137,9 +135,6 @@
 // Reserved pins, not connected
 //#define RSSI_ADC_GPIO_PIN       PC2
 
-#define USE_DSHOT
-#define USE_ESC_TELEMETRY
-#define SENSORS_SET (SENSOR_ACC)
 #define USE_LED_STRIP
 #define USE_SERIAL_4WAY_BLHELI_INTERFACE
 
@@ -153,19 +148,10 @@
 #define DEFAULT_CURRENT_METER_SOURCE CURRENT_METER_ADC
 #define CURRENT_METER_SCALE_DEFAULT 140
 
-// USART5 Rx, PD2
-#define USE_SPEKTRUM_BIND
-#define BIND_PIN    UART5_RX_PIN
-
 #define TARGET_IO_PORTA 0xffff
 #define TARGET_IO_PORTB 0xffff
 #define TARGET_IO_PORTC 0xffff
 #define TARGET_IO_PORTD (BIT(2))
 
-#ifndef ML_PWM_6
-#define USABLE_TIMER_CHANNEL_COUNT 5
-#define USED_TIMERS  ( TIM_N(1) | TIM_N(2) | TIM_N(3) )
-#else
 #define USABLE_TIMER_CHANNEL_COUNT 7
 #define USED_TIMERS  ( TIM_N(1) | TIM_N(2) | TIM_N(3) | TIM_N(5) )
-#endif

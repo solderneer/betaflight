@@ -361,15 +361,7 @@ static OSD_TAB_t saCmsEntBand = { &saCmsBand, VTX_SMARTAUDIO_BAND_COUNT, vtx58Ba
 
 static OSD_TAB_t saCmsEntChan = { &saCmsChan, VTX_SMARTAUDIO_CHANNEL_COUNT, vtx58ChannelNames };
 
-static const char * const saCmsPowerNames[] = {
-    "---",
-    "25 ",
-    "200",
-    "500",
-    "800",
-};
-
-static OSD_TAB_t saCmsEntPower = { &saCmsPower, VTX_SMARTAUDIO_POWER_COUNT, saCmsPowerNames};
+static OSD_TAB_t saCmsEntPower = { &saCmsPower, VTX_SMARTAUDIO_POWER_COUNT, saPowerNames};
 
 static OSD_UINT16_t saCmsEntFreqRef = { &saCmsFreqRef, 5600, 5900, 0 };
 
@@ -423,6 +415,7 @@ static long saCmsCommence(displayPort_t *pDisp, const void *self)
         .channel = vtxSettingsConfig()->channel,
         .freq = vtxSettingsConfig()->freq,
         .power = vtxSettingsConfig()->power,
+        .lowPowerDisarm = vtxSettingsConfig()->lowPowerDisarm,
     };
     vtxSettingsConfig_t newSettings = prevSettings;
 

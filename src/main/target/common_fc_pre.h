@@ -41,6 +41,7 @@
 #ifdef STM32F3
 #define MINIMAL_CLI
 #define USE_DSHOT
+#define USE_DSHOT_DMAR
 #define USE_GYRO_DATA_ANALYSE
 #endif
 
@@ -52,9 +53,11 @@
 #define USE_GYRO_DATA_ANALYSE
 #endif
 
+#ifdef STM32F722xx
+#define USE_ITCM_RAM
+#endif
 #ifdef STM32F7
 #define USE_DSHOT
-#define USE_DSHOT_DMAR
 #define USE_ESC_SENSOR
 #define I2C3_OVERCLOCK true
 #define I2C4_OVERCLOCK true
@@ -75,6 +78,23 @@
 #else
 #define DEFAULT_AUX_CHANNEL_COUNT       6
 #endif
+
+#ifdef USE_ITCM_RAM
+#define FAST_CODE __attribute__((section(".tcm_code")))
+#else
+#define FAST_CODE
+#endif // USE_ITCM_RAM
+
+#ifdef USE_FAST_RAM
+#ifdef __APPLE__
+#define FAST_RAM                    __attribute__ ((section("__DATA,__.fastram_bss"), aligned(4)))
+#else
+#define FAST_RAM                    __attribute__ ((section(".fastram_bss"), aligned(4)))
+#endif
+#else
+#define FAST_RAM
+#endif // USE_FAST_RAM
+
 
 #define USE_CLI
 #define USE_PPM
@@ -98,7 +118,7 @@
 #define USE_BLACKBOX
 #define USE_LED_STRIP
 #define USE_TELEMETRY
-#define USE_TELEMETRY_FRSKY
+#define USE_TELEMETRY_FRSKY_HUB
 #define USE_TELEMETRY_HOTT
 #define USE_TELEMETRY_LTM
 #define USE_TELEMETRY_SMARTPORT
@@ -126,6 +146,7 @@
 #define VTX_SMARTAUDIO
 #define VTX_TRAMP
 #define USE_CAMERA_CONTROL
+#define USE_GYRO_OVERFLOW_CHECK
 #define USE_HUFFMAN
 #define USE_COPY_PROFILE_CMS_MENU
 #define USE_MSP_OVER_TELEMETRY
@@ -138,13 +159,17 @@
 #define USE_SPEKTRUM_FAKE_RSSI
 #define USE_SPEKTRUM_RSSI_PERCENT_CONVERSION
 #define USE_SPEKTRUM_VTX_CONTROL
+#define USE_SPEKTRUM_CMS_TELEMETRY
 #endif
 #endif
 
 #if (FLASH_SIZE > 256)
 // Temporarily moved GPS here because of overflowing flash size on F3
 #define USE_GPS
+#define USE_GPS_UBLOX
+#define USE_GPS_NMEA
 #define USE_NAV
+#define USE_ALT_HOLD
 #define USE_UNCOMMON_MIXERS
 #define USE_OSD_ADJUSTMENTS
 #endif
