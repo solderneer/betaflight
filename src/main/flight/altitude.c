@@ -51,10 +51,8 @@
 #define MID_THROTTLE 1500
 
 int32_t AltHold;
-static int32_t estimatedVario = 0;                      // variometer in cm/s
-static int32_t estimatedAltitude = 0;                // in cm
-
-
+static int32_t estimatedVario = 0;                  // variometer in cm/s
+static int32_t estimatedAltitude = 0;               // in cm
 
 enum {
     DEBUG_ALTITUDE_ACC,
@@ -104,12 +102,21 @@ static void applyMultirotorAltHold(void)
             // set velocity proportional to stick movement +100 throttle gives ~ +50 cm/s
             if(estimatedAltitude > CEILING_HEIGHT) {
                 // Do something to maintain ceiling height
-                if(!(rcData[THROTTLE] < (MID_THROTTLE - rcControlsConfig()->alt_hold_deadband)))
+                if(rcData[THROTTLE] > (MID_THROTTLE + rcControlsConfig()->alt_hold_deadband))
                     setVelocity = 0;
+                    velocityControl = 0;
+                    isAltHoldChanged = 0;
+                else if (rcData[THROTTLE] < (MID_THROTTLE - rcControlsConfig()->alt_hold_deadband)) {
+                    setVelocity = (rcData[THROTTLE] - MID_THROTTLE) / 2;
+                    velocityControl = 1;
+                    isAltHoldChanged = 1;
+                }
             }
-            setVelocity = (rcData[THROTTLE] - MID_THROTTLE) / 2;
-            velocityControl = 1;
-            isAltHoldChanged = 1;
+            else {
+                setVelocity = (rcData[THROTTLE] - MID_THROTTLE) / 2;
+                velocityControl = 1;
+                isAltHoldChanged = 1;
+            }
         } else if (isAltHoldChanged) {
             AltHold = estimatedAltitude;
             velocityControl = 0;
